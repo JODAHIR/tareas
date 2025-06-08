@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gestor de Tareas</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #e9ecef;
+      --text-color: #212529;
+      --card-bg: #ffffff;
+    }
+    body.dark-mode {
+      --bg-color: #121212;
+      --text-color: #f1f1f1;
+      --card-bg: #1e1e1e;
+    }
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .task-card {
+      background-color: var(--card-bg);
+      border-left: 6px solid #0d6efd;
+      border-radius: 10px;
+      margin-bottom: 1rem;
+      padding: 1rem;
+      transition: all 0.2s ease-in-out;
+    }
+    .task-card:hover {
+      box-shadow: 0 0 10px rgba(0,0,0,0.15);
+      transform: scale(1.01);
+    }
+    .completed {
+      opacity: 0.6;
+    }
+    .countdown {
+      font-weight: bold;
+      font-size: 0.9rem;
+    }
+    .badge {
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">📋 Tareas</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+  </div>
+</nav>
+
+<div class="container py-4">
+  <div class="row gy-3 align-items-center justify-content-between">
+    <div class="col-12 col-md-6">
+	<div class="mb-3">
+	  <label for="importarCSV" class="form-label">📥 Importar tareas (CSV):</label>
+	  <input type="file" id="importarCSV" class="form-control" accept=".csv" onchange="importarTareasDesdeCSV(event)">
+	</div>
+    </div>
+    <div class="col-12 col-md-6 text-md-end">
+      <button class="btn btn-outline-success" onclick="exportTasksToCSV()">📤 Exportar CSV</button>
+    </div>
+  </div>
+
+  <div class="text-center my-4">
+    <h2>📝 Gestor de Tareas</h2>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <form onsubmit="event.preventDefault(); addTask();">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <input type="text" id="taskName" class="form-control" placeholder="Nombre de la tarea" required>
+          </div>
+          <div class="col-md-4">
+            <input type="text" id="assignedTo" class="form-control" placeholder="Responsable" required>
+          </div>
+          <div class="col-md-4">
+            <select id="priority" class="form-select">
+              <option value="Alta">Alta 🔴</option>
+              <option value="Media">Media 🟡</option>
+              <option value="Baja">Baja 🟢</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <textarea id="taskDescription" class="form-control" rows="2" placeholder="Descripción de la tarea"></textarea>
+          </div>
+	<div class="col-md-3">
+	  <label class="form-label">Inicio:</label>
+	  <input type="date" id="startDate" class="form-control">
+	</div>
+	<div class="col-md-3">
+	  <label class="form-label">Fin:</label>
+	  <input type="date" id="endDate" class="form-control" readonly>
+	</div>
+          <div class="col-md-3">
+            <label class="form-label">Vto:</label>
+            <input type="date" id="dueDate" class="form-control" required readonly>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Estado:</label>
+          <select id="taskStatus" class="form-select" required>
+	      <option value="pendiente" selected>🔴 Pendientes</option>
+	      <option value="en_proceso">🟡 En proceso</option>
+	      <option value="completado">🟢 Completado</option>
+	    </select>
+          </div>
+          <div class="col-12 d-grid mt-3">
+            <button type="submit" class="btn btn-primary">Agregar tarea</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="row gy-3">
+        <div class="col-md-6">
+          <label for="filterStatus" class="form-label">Filtrar por estado:</label>
+          <select id="filterStatus" class="form-select" onchange="renderTasks()">
+            <option value="todos">Todas</option>
+            <option value="pendientes"> 🔴 Pendientes</option>
+            <option value="completadas"> 🟢 Completadas</option>
+            <option value="prorroga"> 🟡 Prórroga</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label for="filterPriority" class="form-label">Filtrar por prioridad:</label>
+          <select id="filterPriority" class="form-select" onchange="renderTasks()">
+            <option value="todas">Todas</option>
+            <option value="Alta">Alta 🔴</option>
+            <option value="Media">Media 🟡</option>
+            <option value="Baja">Baja 🟢</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tasksContainer" class="row g-3"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const LOCAL_KEY = 'mis_tareas_guardadas';
+    let tasks = [];
+    const countdownIntervals = new Map();
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadTasksFromStorage();
+      renderTasks();
+    });
+
+    function saveTasksToStorage() {
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(tasks));
+    }
+
+    function loadTasksFromStorage() {
+      const data = localStorage.getItem(LOCAL_KEY);
+      if (data) tasks = JSON.parse(data);
+    }
+
+      function addTask() {
+      const task = {
+        id: Date.now(),
+        taskName: taskName.value.trim(),
+        assignedTo: assignedTo.value.trim(),
+        description: taskDescription.value.trim(),
+        startDate: startDate.value,
+        endDate: endDate.value,
+        dueDate: dueDate.value,
+        previousDueDates: [],
+        priority: priority.value,
+        status: taskStatus.value,
+        completed: false,
+        completedDate: null,
+        comments: []
+      };
+      tasks.unshift(task);
+      saveTasksToStorage();
+      renderTasks();
+      document.querySelector('form').reset();
+    }
+
+    function changeToProrroga(id) {
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+
+      const nuevoVencimiento = prompt("La tarea está vencida. Ingresa una nueva fecha de vencimiento (YYYY-MM-DD):", task.dueDate);
+      if (nuevoVencimiento) {
+        const hoy = new Date().toLocaleDateString();
+        if (!task.previousDueDates) task.previousDueDates = [];
+        task.previousDueDates.push(task.dueDate);
+        task.dueDate = nuevoVencimiento;
+        task.status = 'prorroga';
+        task.comments.push({
+          author: 'Sistema',
+          text: `La tarea pasó de pendiente a prórroga el ${hoy}. Fecha anterior: ${task.previousDueDates.slice(-1)[0]}`,
+          date: hoy
+        });
+        saveTasksToStorage();
+        renderTasks();
+      }
+    }
+
+    function renderTasks() {
+      const container = document.getElementById('tasksContainer');
+      container.innerHTML = '';
+
+      const filter = filterStatus.value || 'todos';
+      const priorityFilter = filterPriority.value || 'todas';
+      let filteredTasks = [...tasks];
+
+      if (filter !== 'todos') {
+        filteredTasks = filteredTasks.filter(task => {
+          if (filter === 'pendientes') return !task.completed;
+          if (filter === 'completadas') return task.completed;
+          return task.status === filter;
+        });
+      }
+
+      if (priorityFilter !== 'todas') {
+        filteredTasks = filteredTasks.filter(task => task.priority === priorityFilter);
+      }
+
+      if (filteredTasks.length === 0) {
+        container.innerHTML = `<div class="alert alert-info">No hay tareas para mostrar con estos filtros.</div>`;
+        return;
+      }
+
+      const completedTasks = filteredTasks.filter(t => t.completed);
+      const activeTasks = filteredTasks.filter(t => !t.completed);
+
+      activeTasks.forEach(task => renderTaskCard(task, container, false));
+
+      if (completedTasks.length > 0) {
+        const completedSection = document.createElement('div');
+        completedSection.innerHTML = `<h5 class="mt-4">✅ Tareas Completadas</h5>`;
+        completedTasks.forEach(task => {
+          const collapseId = `collapse-${task.id}`;
+          const header = document.createElement('div');
+          header.className = "border p-2 mb-2 bg-light rounded shadow-sm";
+          header.innerHTML = `
+            <a class="text-decoration-none d-block" data-bs-toggle="collapse" href="#${collapseId}" role="button" aria-expanded="false" aria-controls="${collapseId}">
+              <strong>📌 ${task.taskName}</strong> — Finalizada el ${task.completedDate}
+            </a>
+            <div class="collapse mt-2" id="${collapseId}"></div>
+          `;
+          completedSection.appendChild(header);
+          setTimeout(() => {
+            const detailContainer = document.getElementById(collapseId);
+            if (detailContainer) renderTaskCard(task, detailContainer, true);
+          }, 0);
+        });
+        container.appendChild(completedSection);
+      }
+    }
+
+    function renderTaskCard(task, parent, isNested = false) {
+      const card = document.createElement('div');
+      card.className = `card p-3 task-card shadow ${task.completed ? 'completed' : ''}`;
+      card.style.borderLeftColor = {
+        'Alta': 'red',
+        'Media': 'orange',
+        'Baja': 'green'
+      }[task.priority];
+
+      const countdownId = `countdown-${task.id}`;
+      card.innerHTML = `
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div>
+            <h5>${task.taskName} <span class="badge bg-${getPriorityColor(task.priority)}">${task.priority}</span></h5>
+            <p class="mb-0"><strong>Responsable:</strong> ${task.assignedTo} | <strong>Vence:</strong> ${task.dueDate} | <strong> Estado:</strong> ${task.status}</p>
+            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#detail-${task.id}">Mostrar detalles</button>
+          </div>
+          <div class="text-end">
+            <p id="${countdownId}" class="countdown mb-2"></p>
+            <button class="btn btn-sm btn-outline-primary ms-2" onclick="toggleComplete(${task.id})">✅​​</button>
+            <button class="btn btn-sm btn-outline-primary ms-2" onclick="deleteTask(${task.id})">❎​</button>
+          </div>
+        </div>
+        <div class="collapse" id="detail-${task.id}">
+          <hr>
+          <p class="mb-0"><strong>Inicio:</strong> ${task.startDate || 'N/A'} | <strong>Fecha probable de fin:</strong> ${task.endDate || 'N/A'} | <strong>Finalizada:</strong> ${task.completedDate || '—'}</p>
+          <p class="mb-0"><strong>Descripción:</strong> ${task.description || '—'}</p>
+          <hr>
+	 <div class="mt-3">
+	  <h6 class="mb-2">💬 Comentarios:</h6>
+	  <ul id="comments-${task.id}" class="list-group mb-3">
+	    ${task.comments.map((c, i) => `
+	      <li class="list-group-item d-flex justify-content-between align-items-start">
+		<div class="me-2">
+		  <div><strong>${c.author}</strong> <small class="text-muted">(${c.date})</small></div>
+		  <div>${c.text}</div>
+		</div>
+		<button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteComment(${task.id}, ${i})" title="Eliminar comentario">
+		  <i class="bi bi-x-lg"></i>❌​
+		</button>
+	      </li>
+	    `).join('')}
+	  </ul>
+          <hr>
+          <div>
+		  <h6 class="mb-2">📝 Agrega comentario:</h6>
+		  <div class="row g-2 align-items-center">
+		    <div class="col-12 col-md-3">
+		      <input type="text" class="form-control form-control-sm" placeholder="Tu nombre" id="commentAuthor-${task.id}">
+		    </div>
+		    <div class="col-12 col-md-7">
+		      <input type="text" class="form-control form-control-sm" placeholder="Comentario" id="commentText-${task.id}">
+		    </div>
+		    <div class="col-12 col-md-2 d-grid">
+		      <button class="btn btn-sm btn-outline-primary" onclick="addComment(${task.id})">Comentar</button>
+		    </div>
+		  </div>
+          </div>
+        </div>`;
+      parent.appendChild(card);
+      if (!task.completed) startCountdown(task.id, task.dueDate);
+    }
+
+    function startCountdown(id, dueDateStr) {
+      const countdownEl = document.getElementById(`countdown-${id}`);
+      const dueDate = new Date(dueDateStr);
+      function updateCountdown() {
+        const now = new Date();
+        const diff = dueDate - now;
+        if (diff <= 0) {
+          countdownEl.innerHTML = `<span class="text-danger">¡Vencida!</span><br><button class='btn btn-sm btn-warning mt-1' onclick='changeToProrroga(${id})'>♻️​ Pasar a prórroga</button>`;
+          return;
+        }
+        const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
+        const m = Math.floor((diff / (1000 * 60)) % 60);
+        const s = Math.floor((diff / 1000) % 60);
+        countdownEl.innerText = `${d}d ${h}h ${m}m ${s}s`;
+      }
+      updateCountdown();
+      const intervalId = setInterval(updateCountdown, 1000);
+      countdownIntervals.set(id, intervalId);
+    }
+
+    function toggleComplete(id) {
+      const task = tasks.find(t => t.id === id);
+      if (task) {
+        if (!task.completed) {
+          task.completed = true;
+          task.completedDate = new Date().toISOString().split('T')[0];
+          task.status = 'completada';
+          const intervalId = countdownIntervals.get(task.id);
+          if (intervalId) clearInterval(intervalId);
+        } else {
+          task.completed = false;
+          task.completedDate = null;
+          task.status = 'pendiente';
+        }
+        saveTasksToStorage();
+        renderTasks();
+      }
+    }
+
+    function deleteTask(id) {
+      if (!confirm('¿Estás seguro de que quieres eliminar esta tarea?')) return;
+      tasks = tasks.filter(t => t.id !== id);
+      saveTasksToStorage();
+      renderTasks();
+    }
+
+    function getPriorityColor(priority) {
+      return { Alta: 'danger', Media: 'warning', Baja: 'success' }[priority] || 'secondary';
+    }
+
+    function addComment(id) {
+      const authorInput = document.getElementById(`commentAuthor-${id}`);
+      const textInput = document.getElementById(`commentText-${id}`);
+      const author = authorInput.value.trim();
+      const text = textInput.value.trim();
+      if (!author || !text) return alert('Por favor ingresa tu nombre y el comentario.');
+      const task = tasks.find(t => t.id === id);
+      if (task) {
+        task.comments.push({ author, text, date: new Date().toLocaleDateString() });
+        saveTasksToStorage();
+        renderTasks();
+      }
+    }
+
+    function deleteComment(taskId, commentIndex) {
+      const task = tasks.find(t => t.id === taskId);
+      if (task) {
+        task.comments.splice(commentIndex, 1);
+        saveTasksToStorage();
+        renderTasks();
+      }
+    }
+  
+function toggleDarkMode() {
+  document.body.classList.toggle('dark-mode');
+  localStorage.setItem('modo_oscuro', document.body.classList.contains('dark-mode'));
+}
+document.addEventListener('DOMContentLoaded', () => {
+  if (localStorage.getItem('modo_oscuro') === 'true') {
+    document.body.classList.add('dark-mode');
+  }
+});
+
+function exportTasksToCSV() {
+  if (!tareas || tareas.length === 0) {
+    alert("No hay tareas para exportar.");
+    return;
+  }
+
+  let csvContent = "task_id,titulo,descripcion,estado,comentario_autor,comentario_texto,comentario_fecha\n";
+
+  tareas.forEach(task => {
+    if (task.comments && task.comments.length > 0) {
+      task.comments.forEach(c => {
+        csvContent += `"${task.id}","${task.title}","${task.description}","${task.status}","${c.author}","${c.text}","${c.date}"\n`;
+      });
+    } else {
+      csvContent += `"${task.id}","${task.title}","${task.description}","${task.status}","","",""\n`;
+    }
+  });
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "tareas_comentarios.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importarTareasDesdeCSV(event) {
+  const archivo = event.target.files[0];
+  if (!archivo) return;
+
+  const lector = new FileReader();
+  lector.onload = function (e) {
+    const contenido = e.target.result;
+    const filas = contenido.split('\n').map(f => f.trim()).filter(f => f);
+    const encabezados = filas.shift().split(',');
+
+    const tareasMap = {};
+
+    filas.forEach(fila => {
+      const datos = fila.split(',');
+      const [id, titulo, descripcion, estado, autor, texto, fecha] = datos.map(d => d.trim());
+
+      if (!tareasMap[id]) {
+        tareasMap[id] = {
+          id: parseInt(id),
+          title: titulo,
+          description: descripcion,
+          status: estado,
+          comments: []
+        };
+      }
+
+      if (autor && texto && fecha) {
+        tareasMap[id].comments.push({ author: autor, text: texto, date: fecha });
+      }
+    });
+
+    const tareas = Object.values(tareasMap);
+    localStorage.setItem('tareas', JSON.stringify(tareas));
+    location.reload();
+  };
+  lector.readAsText(archivo);
+}
+
+  // Función para obtener la fecha actual en formato YYYY-MM-DD
+  function fechaActual() {
+    const hoy = new Date();
+    const yyyy = hoy.getFullYear();
+    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoy.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // Función para sumar días hábiles (sin sábados ni domingos)
+  function sumarDiasHabiles(fecha, diasHabiles) {
+    let contador = 0;
+    let fechaResult = new Date(fecha);
+
+    while (contador < diasHabiles) {
+      fechaResult.setDate(fechaResult.getDate() + 1);
+      const diaSemana = fechaResult.getDay();
+      // Día 0 = domingo, día 6 = sábado
+      if (diaSemana !== 0 && diaSemana !== 6) {
+        contador++;
+      }
+    }
+    return fechaResult;
+  }
+
+  // Formatear fecha a YYYY-MM-DD para input date
+  function formatearFecha(fecha) {
+    const yyyy = fecha.getFullYear();
+    const mm = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dd = String(fecha.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  // Asignar fecha actual por defecto al inicio y calcular fin
+  const startInput = document.getElementById('startDate');
+  const endInput = document.getElementById('endDate');
+  const dueDate = document.getElementById('dueDate');
+
+  startInput.value = fechaActual();
+
+  function actualizarFechaFin() {
+    const fechaInicio = new Date(startInput.value);
+    const fechaFin = sumarDiasHabiles(fechaInicio, 5);
+    endInput.value = formatearFecha(fechaFin);
+  }
+  
+   function actualizarVencimiento() {
+    const inicio = new Date(startDate.value);
+    const vto = sumarDiasHabiles(inicio, 3);
+    dueDate.value = formatearFecha(vto);
+  }
+
+  // Calcular fecha fin al cargar la página y cuando cambie la fecha de inicio
+  actualizarFechaFin();
+  
+  startInput.addEventListener('change', actualizarFechaFin);
+ 
+  actualizarVencimiento();
+  startDate.addEventListener('change', actualizarVencimiento);
+</script>
+</body>
+</html>
